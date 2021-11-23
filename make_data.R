@@ -187,6 +187,7 @@ econ <- tidycensus::get_acs(
 )
 
 
+
 ## Diversity for econ is Shannon Index -sum(p_i*log(p_i))
 ## Defining economic diversity as how equal income is across racial groups
 ## An alternative metric of interest may be income equality as measured by Gini coefficient
@@ -310,7 +311,31 @@ local_votes <- local_votes %>%
   summarize(local_vote_rate = mean(vote_rate, na.rm=T)) %>% 
   ungroup()
 
-votes <- local_votes %>% full_join(national_votes)
+votes <- local_votes %>% full_join(national_votes) 
+
+# Taxes
+## Census
+## 2019 Annual Survey of State Government Finances Tables
+## https://www.census.gov/data/tables/2019/econ/state/historical-tables.html
+
+ 
+taxes_2019 <- rio::import(file = 'https://www2.census.gov/programs-surveys/state/tables/2019/2019_ASFIN_State_Totals.xlsx')%>% 
+  filter(`(Thousands of Dollars)` %in% c("Total revenue","Education","Public welfare","Health")) %>% 
+  select(-c(`United States`)) %>% 
+  rename(category = `(Thousands of Dollars)`) %>% 
+  pivot_longer(`Alabama`:`Wyoming`)
+
+total_rev <- taxes_2019 %>% 
+  filter(category=="Total revenue") %>% 
+  rename(total_val=value) %>% 
+  select(-c("category"))
+
+taxes_pct <- taxes_2019 %>% 
+  filter(category != "Total revenue") %>% 
+  left_join(total_rev) %>% 
+  mutate(percentage = value/total_val*100, disp_name = glue::glue("tax_{tolower(category)}_percentage")) %>% 
+  rename (state_name=name) %>% 
+  pivot_wider(id_cols = state_name, names_from = disp_name, values_from=percentage)
 
 final_df <-
   lat_long %>%
@@ -329,8 +354,28 @@ final_df <-
   left_join(lgbt_pct %>% rename(state_code = GEOID) %>% select(-NAME)) %>%
   left_join(environ) %>% 
   mutate(state_name = str_trim(state_name, side="both")) %>% 
-  left_join(votes) 
+  left_join(votes) %>% 
+  left_join(taxes_pct)
 
 write_csv(final_df, "final_df.csv")
 
 
+# make parameters csv
+data.frame(variable_names = names(final_df), data_type = sapply(final_df, class) ) %>% 
+  mutate(n = str_count(variable_names, "_"),
+         category = word(variable_names, 1, sep="_"), 
+         subcategory=word(variable_names, 2, sep="_"), 
+         metric=ifelse(n>1,word(variable_names,-1, sep="_"),""), 
+         field = ifelse(n>2, word(variable_names, 3, n, sep="_"),"")) %>% 
+  arrange(n>1,variable_names ) %>% 
+  select(category, subcategory, field, metric, variable_names, data_type) %>% 
+  write_csv("parameters.csv")
+
+
+
+#TODO
+# Add Tax 
+# Populate Actual Data Sheet
+# Populate categories sheet
+# Table to map languages?
+# Add Readme of data sources
