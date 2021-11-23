@@ -48,7 +48,7 @@ origin <- tidycensus::get_acs(
 )
 
 orig_denom <- origin %>%
-  filter(variable == "orig_total") %>%
+  filter(variable == "total") %>%
   rename(orig_total = estimate) %>%
   select(GEOID, NAME, orig_total)
 
@@ -88,7 +88,7 @@ df_language <- v2015 %>%
   dplyr::mutate(language = coalesce(language, stat)) %>% # To capture total for percent calculations
   dplyr::filter(is.na(fluency)) %>%
   dplyr::mutate(language = str_replace(language, ":", "")) %>%
-  dplyr::mutate(disp_name = namify(language, prefix = "lang")) %>%
+  dplyr::mutate(disp_name = namify(language)) %>%
   dplyr::arrange(language)
 
 
