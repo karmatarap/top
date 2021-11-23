@@ -41,7 +41,7 @@ df_origin <- v2019 %>%
 origin <- tidycensus::get_acs(
   geography = "county",
   variables = setNames(df_origin$name, df_origin$disp_name),
-  state = my_states,
+  #state = my_states,
   year = 2019,
   survey = "acs5",
   geometry = F,
@@ -95,7 +95,7 @@ df_language <- v2015 %>%
 language <- tidycensus::get_acs(
   geography = "county",
   variables = setNames(df_language$name, df_language$disp_name),
-  state = my_states,
+  #state = my_states,
   year = 2015,
   survey = "acs5",
   geometry = F,
@@ -124,7 +124,8 @@ df_lgbt <- v2019 %>%
 lgbt <- tidycensus::get_acs(
   geography = "state",
   variables = setNames(df_lgbt$name, df_lgbt$disp_name),
-  state = my_states,
+  
+  #state = my_states,
   year = 2019,
   survey = "acs5",
   geometry = F,
@@ -151,7 +152,7 @@ df_race <- v2019 %>%
 race <- tidycensus::get_acs(
   geography = "county",
   variables = setNames(df_race$name, df_race$disp_name),
-  state = my_states,
+  #state = my_states,
   year = 2019,
   survey = "acs5",
   geometry = F,
@@ -180,7 +181,7 @@ df_econ <- v2019 %>%
 econ <- tidycensus::get_acs(
   geography = "county",
   variables = setNames(df_econ$name, df_econ$disp_name),
-  state = my_states,
+  #state = my_states,
   year = 2019,
   survey = "acs5",
   geometry = F,
@@ -222,7 +223,7 @@ econ_di <- econ %>%
 unemp <- tidycensus::get_acs(
   geography = "county",
   variables = c(unemp_rate = "B23025_005E", total_emp = "B23025_003E"),
-  state = my_states,
+  #state = my_states,
   year = 2019,
   survey = "acs5",
   geometry = F,
@@ -237,7 +238,7 @@ emp_pct <- unemp %>%
 housing <- tidycensus::get_acs(
   geography = "county",
   variables = c(median_rent = "DP04_0134E", median_value = "DP04_0080E"),
-  state = my_states,
+  #state = my_states,
   year = 2019,
   survey = "acs5",
   geometry = F,
@@ -252,7 +253,7 @@ housing_afford <- housing %>%
 ## Population and geometry
 population <- get_estimates("county",
                             product = "population",
-                            state = my_states,
+                            #state = my_states,
                             geometry = T,
                             output = "wide"
 ) %>%
@@ -313,6 +314,77 @@ local_votes <- local_votes %>%
 
 votes <- local_votes %>% full_join(national_votes) 
 
+# Voting Power
+state_pop <- tidycensus::get_acs(
+  geography = "state",
+  variables = c(pop="B01003_001"),
+ # state = my_states,
+  year = 2019,
+  survey = "acs5",
+  geometry = F,
+)
+
+
+ec_votes <- tribble(
+  ~state_name,   ~ec_votes, 	
+  "Alabama" ,	9, 	
+  "Montana", 	4,
+  "Alaska" 	,3 ,	
+  "Nebraska" ,	5,
+  "Arizona" ,	11, 	
+  "Nevada" 	,6,
+  "Arkansas" 	,6, 	
+  "New Hampshire", 	4,
+  "California" ,	54 	,
+  "New Jersey" ,	14,
+  "Colorado" 	,10 	,
+  "New Mexico" ,	5,
+  "Connecticut", 	7, 	
+  "New York" 	,28,
+  "Delaware" 	,3 ,	
+  "North Carolina" ,	16,
+  "Florida" 	,30 	,
+  "North Dakota", 	3,
+  "Georgia", 	16 	,
+  "Ohio" 	,17,
+  "Hawaii" 	,4, 	
+  "Oklahoma" ,	7,
+  "Idaho" 	,4 	,
+  "Oregon" 	,8,
+  "Illinois" 	,19, 	
+  "Pennsylvania", 	19,
+  "Indiana" 	,11 	,
+  "Rhode Island", 	4,
+  "Iowa" 	,6 	,
+  "South Carolina", 	9,
+  "Kansas" 	,6 	,
+  "South Dakota" ,	3,
+  "Kentucky" 	,8, 	
+  "Tennessee" ,	11,
+  "Louisiana" ,	8, 	
+  "Texas" ,	40,
+  "Maine" ,	4, 	
+  "Utah" 	,6,
+  "Maryland" 	,10, 	
+  "Vermont" 	,3,
+  "Massachusetts", 	11, 	
+  "Virginia" 	,13,
+  "Michigan" 	,15 ,	
+  "Washington" 	,12,
+  "Minnesota" 	,10 	,
+  "West Virginia" ,	4,
+  "Mississippi" 	,6, 	
+  "Wisconsin" 	,10,
+  "Missouri" 	,10 ,	
+  "Wyoming" 	,3
+)
+voting_power <- ec_votes %>% 
+  left_join(state_pop, by=c("state_name"="NAME")) %>% 
+  #Voting power is Electoral College votes per million
+  mutate(national_vote_power = ec_votes / (estimate/1e6)) %>% 
+  select(state_name, national_vote_power)
+
+
 # Taxes
 ## Census
 ## 2019 Annual Survey of State Government Finances Tables
@@ -355,24 +427,28 @@ final_df <-
   left_join(environ) %>% 
   mutate(state_name = str_trim(state_name, side="both")) %>% 
   left_join(votes) %>% 
-  left_join(taxes_pct)
-
-write_csv(final_df, "final_df.csv")
+  left_join(taxes_pct) %>% 
+  left_join(voting_power)
 
 
 # make parameters csv
-data.frame(variable_names = names(final_df), data_type = sapply(final_df, class) ) %>% 
+order <- data.frame(variable_names = names(final_df), data_type = sapply(final_df, class) ) %>% 
   mutate(n = str_count(variable_names, "_"),
          category = word(variable_names, 1, sep="_"), 
          subcategory=word(variable_names, 2, sep="_"), 
          metric=ifelse(n>1,word(variable_names,-1, sep="_"),""), 
          field = ifelse(n>2, word(variable_names, 3, n, sep="_"),"")) %>% 
   arrange(n>1,variable_names ) %>% 
-  select(category, subcategory, field, metric, variable_names, data_type) %>% 
+  select(category, subcategory, field, metric, variable_names, data_type) 
+
+# write out
+order %>% 
   write_csv("parameters.csv")
+final_df[, order$variable_names] %>% 
+  write_csv( "final_df.csv")
 
 
-
+#
 #TODO
 # Add Tax 
 # Populate Actual Data Sheet
