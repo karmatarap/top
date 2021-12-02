@@ -1,0 +1,216 @@
+---
+title: "Immigration Nation"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    social: menu
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+
+# Load libraries
+pkgs <- c("tidyverse", "tidycensus", "sf", "flexdashboard", "leaflet", "reactable", "htmltools")
+library(tidyverse)
+library(tidycensus)
+library(sf)
+library(flexdashboard)
+library(leaflet)
+library(reactable)
+library(htmltools)
+
+# Set api key
+Sys.setenv(CENSUS_API_KEY="...")
+
+# Cache shapefiles
+options(tigris_use_cache = TRUE)
+
+# Get a list of available census data for 2019
+v2019 <- tidycensus::load_variables(2019, "acs1", cache = TRUE)
+
+# We will only look at immigrants origin and language
+df_origin <- v2019 %>%
+  dplyr::filter(startsWith(name, "B05006")) %>%
+  tidyr::separate(label, into = c("type", "stat", "continent", "region", "country", "subcountry"), sep = "!!") %>%
+  tidyr::unite(., col = "disp_country", country, subcountry, na.rm = TRUE, sep = "") %>%
+  dplyr::filter(disp_country != "" & !stringr::str_detect(name, 'PR')) %>%
+  dplyr::arrange(disp_country)
+
+df_language <- v2019 %>%
+  dplyr::filter(startsWith(name, "B16001")) %>%
+  tidyr::separate(label, into = c("type", "stat", "language", "fluency"), sep = ":?!!") %>%
+  dplyr::filter(is.na(fluency) & !is.na(language)) %>%
+  dplyr::mutate(language = str_replace(language, ":", "")) %>%
+  dplyr::arrange(language)
+
+df_industry <- v2019 %>% 
+  dplyr::filter(startsWith(name, "C24050"))  %>% 
+  tidyr::separate(label, into = c("type", "stat", "industry", "subindustry"), sep = ":?!!") %>%
+  dplyr::filter(is.na(subindustry) & !is.na(industry)) %>% 
+  dplyr::arrange(industry)
+
+df_occupation <- v2019 %>% 
+  dplyr::filter(startsWith(name, "C24060")) %>% 
+  tidyr::separate(label, into = c("type", "stat", "occupation", "suboccupation"), sep = ":?!!")  
+
+ 
+
+# Subsetting on some states till we solve caching
+my_states <- c("MA", "NY", "PA", "NJ")
+state_codes <- c("25","36","42","34")
+```
+
+
+
+Sidebar {.sidebar}
+=======================================================================
+
+## TOP Hackathon
+
+Proof of concept of visualizing and ranking Census parameters of interest.
+Here we are prototyping some criteria that may be of importance to settling immigrants within the US. 
+
+### About you
+```{r, inputs}
+
+shiny::selectInput("origin",
+  label = "What country are you migrating from?",
+  choices = df_origin$disp_country
+)
+
+shiny::checkboxInput(
+  "origin_importance", "Is it important to live near immigrants from your country?",
+  TRUE
+)
+
+shiny::selectInput("language",
+  label = "What is your main language?",
+  choices = df_language$language
+)
+
+shiny::checkboxInput(
+  "language_importance", "Is it important to live near people that speak your language?",
+  TRUE
+)
+
+shiny::selectInput("industry",
+  label = "Which Industry do you want to work in?",
+  choices = df_industry$industry
+)
+
+shiny::checkboxInput(
+  "industry_importance", "Is it important to live near your industry of choice?",
+  TRUE
+)
+
+
+shiny::selectizeInput(
+  "finance_selection", "Select all financial criteria important for you",
+  label = NULL,
+  choices = county_data$item
+)
+```
+
+
+```{r, utils}
+normalize <- function(x) (x - min(x)) / (max(x) - min(x))
+
+rating_stars <- function(rating, max_rating = 5) {
+  star_icon <- function(empty = FALSE) {
+    htmltools::tagAppendAttributes(shiny::icon("star"),
+      style = paste("color:", if (empty) "#edf0f2" else "orange"),
+      "aria-hidden" = "true"
+    )
+  }
+  rounded_rating <- floor(rating + 0.5) # always round up
+  stars <- lapply(seq_len(max_rating), function(i) {
+    if (i <= rounded_rating) star_icon() else star_icon(empty = TRUE)
+  })
+  label <- sprintf("%s out of %s stars", rating, max_rating)
+  div(title = label, role = "img", stars)
+}
+```
+
+```{r, make_data}
+my_vars <- shiny::reactive({
+  c(
+    origin = df_origin$name[which(df_origin$disp_country == input$origin)],
+    language = df_language$name[which(df_language$language == input$language)],
+    industry = df_industry$name[which(df_industry$industry == input$industry)]
+    
+  )
+})
+
+make_data <- shiny::reactive({
+  multi_state_tract <- tidycensus::get_acs(
+    geography = "county",
+    variables = my_vars,
+    state = my_states,
+    year = 2019,
+    survey = "acs5",
+    geometry = TRUE,
+    output = "wide" # get data in wide format for easier mapping
+  )
+
+  data <- multi_state_tract %>%
+    mutate(
+      norm_lang = coalesce(normalize(languageM), 0) * input$language_importance,
+      norm_orig = coalesce(normalize(originM), 0) * input$origin_importance,
+      norm_inds = coalesce(normalize(industryM), 0) * input$industry_importance,
+      tot_score = (norm_lang + norm_orig + norm_inds) ,
+      score = tot_score / max(tot_score) * 100
+    )
+
+  data
+})
+```
+
+
+Mappity Map
+=======================================================================
+
+```{r, mapit}
+
+leaflet::renderLeaflet({
+  pal <- colorNumeric(
+    palette = "viridis",
+    domain = make_data()$score
+  )
+
+  make_data() %>%
+    st_transform(crs = "+init=epsg:4326") %>%
+    leaflet::leaflet(width = "100%") %>%
+    addProviderTiles(provider = "CartoDB.Positron") %>%
+    addPolygons(
+      popup = ~NAME,
+      stroke = FALSE,
+      smoothFactor = 0,
+      fillOpacity = 0.7,
+      color = ~ pal(score)
+    ) %>%
+    addLegend("bottomright",
+      pal = pal,
+      values = ~score,
+      title = "TOP Score",
+      opacity = 1
+    )
+})
+
+```
+
+
+Rankings
+=======================================================================
+
+```{r, table}
+
+reactable::renderReactable({
+  make_data() %>%
+    as.data.frame() %>%
+    arrange(desc(score)) %>%
+    select(NAME, languageM, originM, industryM, score) %>%
+    rename(Country=NAME, Language=languageM, Origin=originM, Industry=industryM, Score=score) %>% 
+    reactable::reactable( pagination = FALSE, searchable = TRUE,
+                columns = list(Score = colDef(cell = function(value) rating_stars(value / 20))))
+})
+```
