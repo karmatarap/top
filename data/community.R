@@ -51,7 +51,7 @@ get_origin <- function(denom=population) {
   orig_pct <- origin %>%
     filter(variable != "orig_total") %>%
     left_join(denom) %>%
-    mutate(percentage = coalesce(estimate / POP * 100,0)) %>%
+    mutate(percentage = coalesce(estimate / opportunity_population_count * 100,0)) %>%
     rename(count = estimate) %>%
     pivot_wider(id_cols = c(GEOID, NAME), names_from = variable, values_from = c(percentage, count), names_glue = "community_origin_{variable}_{.value}")
   return(orig_pct)
@@ -100,7 +100,7 @@ get_language <- function(denom=population) {
     filter(!variable %in% c("speak_only_english", "total")) %>%
     # Changing denom to total survey population
     left_join(denom) %>%
-    mutate(percentage = coalesce(estimate / POP * 100,0)) %>%
+    mutate(percentage = coalesce(estimate / opportunity_population_count * 100,0)) %>%
     rename(count = estimate) %>%
     pivot_wider(id_cols = c(GEOID, NAME), names_from = variable, values_from = c(percentage, count), names_glue = "community_language_{variable}_{.value}")
 

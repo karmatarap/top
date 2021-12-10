@@ -34,6 +34,11 @@ population <- get_population()
 ## Ethnic Origin
 orig_pct <- get_origin()
 
+# Check highest percentages
+max_pct <- orig_pct %>% select(ends_with("percentage") & !ends_with("total_percentage")) %>% sapply(max)
+ 
+
+
 ## Language
 language_pct <- get_language()
 
@@ -84,7 +89,7 @@ voting_power <- get_voting_power()
 
 
 final_df <-
-  lat_long %>%
+  population %>%
   left_join(housing_afford) %>%
   left_join(emp_pct) %>%
   left_join(econ_di) %>%
