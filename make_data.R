@@ -24,6 +24,10 @@ sapply(data.funcs, source, .GlobalEnv)
 # Census Data Sources
 #----------------------------------------------------------------
 
+# Population - required for big N
+## Population + latitude/longitude data
+population <- get_population()
+
 # ===================================================================
 # Community
 
@@ -49,8 +53,7 @@ econ_di <- get_economic_diversity()
 ## Employment
 emp_pct <- get_employment()
 
-## Population + latittude/longitude data
-lat_long <- get_population()
+
 
 # ===================================================================
 # Affordability
@@ -99,7 +102,8 @@ final_df <-
   mutate(state_name = str_trim(state_name, side = "both")) %>%
   left_join(votes) %>%
   left_join(taxes_pct) %>%
-  left_join(voting_power)
+  left_join(voting_power) %>% 
+  mutate_all(~replace(., is.na(.), 0.0))
 
 
 # make parameters csv
@@ -116,6 +120,19 @@ order <- data.frame(variable_names = names(final_df), data_type = sapply(final_d
 
 # write out
 order %>%
+  mutate(data_variable = paste(category, subcategory, field, sep="_")) %>% 
   write_csv("parameters.csv")
-final_df[, order$variable_names] %>%
+final_df %>%
+  select(order$variable_names) %>% 
   write_csv("final_df.csv")
+
+
+# make pandas code
+
+order %>% 
+  filter(subcategory=="origin" & metric =="percentage") %>% 
+  mutate(
+    dummy = glue::glue("{category}_{subcategory}_{field}_rank"),
+    actual= glue::glue("{category}_{subcategory}_{field}_{metric}"),
+    code = glue::glue("dummy_data['{dummy}'] = actual_data['{actual}'].rank(pct=True)")) %>% 
+  pull(code)

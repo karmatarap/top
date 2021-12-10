@@ -5,7 +5,7 @@
 
 #' Retrieve Ethnic Origin data at the county level
 #' @family community
-#' @param vmap tidycensus dataframe containing key, label and concept
+#' @param denom dataframe containg cencus total population for percent calculations
 #' @source 2019 ACS 5 year
 #' @return dataframe
 #' @format Containing count and percent of county population with a particular origin
@@ -16,7 +16,7 @@
 #'   \item{community_origin_[country]_percentage}{Percentage of community from [country] within the county}
 #' }
 #'
-get_origin <- function() {
+get_origin <- function(denom=population) {
   df_origin <- v2019_5 %>%
     dplyr::filter(startsWith(name, "B05006")) %>%
     tidyr::separate(label, into = c("type", "stat", "continent", "region", "country", "subcountry"), sep = "!!") %>%
@@ -50,8 +50,8 @@ get_origin <- function() {
 
   orig_pct <- origin %>%
     filter(variable != "orig_total") %>%
-    left_join(orig_denom) %>%
-    mutate(percentage = estimate / orig_total * 100) %>%
+    left_join(denom) %>%
+    mutate(percentage = coalesce(estimate / POP * 100,0)) %>%
     rename(count = estimate) %>%
     pivot_wider(id_cols = c(GEOID, NAME), names_from = variable, values_from = c(percentage, count), names_glue = "community_origin_{variable}_{.value}")
   return(orig_pct)
@@ -61,6 +61,7 @@ get_origin <- function() {
 
 #' Retrieve language data at the county level
 #' @family community
+#' @param denom dataframe containg cencus total population for percent calculations
 #' @source 2019 ACS 1 year
 #' @return dataframe
 #' @format Containing count and percent of county population with a particular spoken language
@@ -71,7 +72,7 @@ get_origin <- function() {
 #'   \item{community_language_[language]_percentage}{Percentage of speakers of [language] within the county}
 #' }
 #'
-get_language <- function() {
+get_language <- function(denom=population) {
   df_language <- v2019_1 %>%
     dplyr::filter(startsWith(name, "B16001")) %>%
     tidyr::separate(label, into = c("type", "stat", "language", "fluency"), sep = ":?!!") %>%
@@ -97,8 +98,9 @@ get_language <- function() {
 
   language_pct <- language %>%
     filter(!variable %in% c("speak_only_english", "total")) %>%
-    left_join(language %>% filter(variable == "total") %>% select(GEOID, NAME, estimate) %>% rename(total = estimate)) %>%
-    mutate(percentage = coalesce(estimate / total * 100, 0)) %>%
+    # Changing denom to total survey population
+    left_join(denom) %>%
+    mutate(percentage = coalesce(estimate / POP * 100,0)) %>%
     rename(count = estimate) %>%
     pivot_wider(id_cols = c(GEOID, NAME), names_from = variable, values_from = c(percentage, count), names_glue = "community_language_{variable}_{.value}")
 

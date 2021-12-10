@@ -12,8 +12,8 @@
 #' \describe{
 #'   \item{GEOID}{Location map}
 #'   \item{NAME}{Name of county}
-#'   \item{housing_median_rent}{Housing Median Rent}
-#'   \item{housing_median_mortgage}{Housing Median Mortgage}
+#'   \item{affordability_median_rent}{Housing Median Rent}
+#'   \item{affordability_median_mortgage}{Housing Median Mortgage}
 #' }
 #'
 get_housing <- function() {
@@ -28,7 +28,7 @@ get_housing <- function() {
 
   housing_afford <- housing %>%
     mutate(disp_name = ifelse(variable == "DP04_0080", "median_rent", "median_mortgage")) %>%
-    pivot_wider(id_cols = c(GEOID, NAME), names_from = disp_name, values_from = estimate, names_glue = "housing_{disp_name}")
+    pivot_wider(id_cols = c(GEOID, NAME), names_from = disp_name, values_from = estimate, names_glue = "affordability_{disp_name}")
 
   return(housing_afford)
 }
