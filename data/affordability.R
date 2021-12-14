@@ -27,7 +27,7 @@ get_housing <- function() {
   )
 
   housing_afford <- housing %>%
-    mutate(disp_name = ifelse(variable == "DP04_0080", "median_rent", "median_mortgage")) %>%
+    mutate(disp_name = ifelse(variable == "DP04_0080", "median_mortgage", "median_rent")) %>%
     pivot_wider(id_cols = c(GEOID, NAME), names_from = disp_name, values_from = estimate, names_glue = "affordability_{disp_name}")
 
   return(housing_afford)
